@@ -1,31 +1,48 @@
 /**
- * Copyright (C) 2005 - 2010  Eric Van Dewoestine
+ * Copyright (c) 2005 - 2010, Eric Van Dewoestine
+ * All rights reserved.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * Redistribution and use of this software in source and binary forms, with
+ * or without modification, are permitted provided that the following
+ * conditions are met:
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * * Redistributions of source code must retain the above
+ *   copyright notice, this list of conditions and the
+ *   following disclaimer.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * * Redistributions in binary form must reproduce the above
+ *   copyright notice, this list of conditions and the
+ *   following disclaimer in the documentation and/or other
+ *   materials provided with the distribution.
+ *
+ * * Neither the name of Eric Van Dewoestine nor the names of its
+ *   contributors may be used to endorse or promote products derived from
+ *   this software without specific prior written permission of
+ *   Eric Van Dewoestine.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
+ * IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package org.eclim.misc.ant;
+package vunit;
 
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileReader;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 
 import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
-
-import org.apache.commons.lang.StringUtils;
 
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.DirectoryScanner;
@@ -36,11 +53,9 @@ import org.apache.tools.ant.taskdefs.condition.Os;
 
 import org.apache.tools.ant.types.Environment;
 import org.apache.tools.ant.types.FileSet;
+import org.apache.tools.ant.types.Path;
 
-import org.eclim.util.CommandExecutor;
-import org.eclim.util.IOUtils;
-
-import org.eclim.util.file.FileUtils;
+import org.apache.tools.ant.util.FileUtils;
 
 import org.xml.sax.Attributes;
 import org.xml.sax.SAXException;
@@ -50,7 +65,7 @@ import org.xml.sax.helpers.DefaultHandler;
 /**
  * Ant task for executing vunit test cases.
  * <p/>
- * Currently only runs on unix systems.
+ * Currently only intended for unix based systems.
  *
  * @author Eric Van Dewoestine
  */
@@ -58,24 +73,12 @@ public class VUnitTask
   extends Task
 {
   private static final String TESTSUITE = "testsuite";
-  private static final String PLUGIN = "\"source <plugin>\"";
-  private static final String OUTPUT = "\"let g:vimUnitOutputDir='<todir>'\"";
   private static final String TESTCASE =
-    "\"silent! call VURunnerRunTests('<basedir>', '<testcase>')\"";
-  private static final String[] VUNIT = {
-    "vim",
-    "-u", "NONE",
-    "--cmd", "\"set nocp | sy on | filetype plugin indent on | ru plugin/eclim.vim\"",
-    "--cmd", "\"set cot=menuone,longest et sw=2 ts=2\"",
-    "--cmd", "",
-    "--cmd", "",
-    "--cmd", "",
-    "-c", "",
-    "-c", "\"qa!\""
-  };
+    "silent! call vunit#TestRunner('<basedir>', '<testcase>')";
 
-  private File plugin;
   private File todir;
+  private ArrayList<Plugin> plugins = new ArrayList<Plugin>();
+  private ArrayList<Path> paths = new ArrayList<Path>();
   private ArrayList<FileSet> filesets = new ArrayList<FileSet>();
   private ArrayList<Environment.Variable> properties =
     new ArrayList<Environment.Variable>();
@@ -95,23 +98,7 @@ public class VUnitTask
       SAXParser parser = SAXParserFactory.newInstance().newSAXParser();
       DefaultHandler handler = new ResultHandler();
 
-      String vunit = PLUGIN.replaceFirst(
-          "<plugin>", plugin.getAbsolutePath().replace('\\', '/'));
-      String output = OUTPUT.replaceFirst(
-          "<todir>", todir.getAbsolutePath().replace('\\', '/'));
-
-      // build properties string.
-      StringBuffer propertiesBuffer = new StringBuffer();
-      for (Environment.Variable var : properties){
-        if(propertiesBuffer.length() > 0){
-          propertiesBuffer.append(" | ");
-        }
-        propertiesBuffer.append("let ")
-          .append(var.getKey())
-          .append("='")
-          .append(var.getValue()).append("'");
-      }
-      String setproperties = "\"" + propertiesBuffer.append('"').toString();
+      String vunit = extractVUnitPlugin().getAbsolutePath().replace('\\', '/');
 
       for (FileSet set : filesets){
         DirectoryScanner scanner = set.getDirectoryScanner(getProject());
@@ -125,40 +112,39 @@ public class VUnitTask
           file = file.replace('\\', '/');
           log("Running: " + file);
 
-          String[] command = new String[VUNIT.length];
-          System.arraycopy(VUNIT, 0, command, 0, VUNIT.length);
+          Vim vim = new Vim();
+          vim.setProperties(properties);
+          vim.setPaths(paths);
+          vim.setPlugins(plugins);
+          vim.addCommand("source " + vunit);
+          vim.addCommand(run.replaceFirst("<testcase>", file));
 
-          command[8] = setproperties;
-          command[10] = vunit;
-          command[12] = output;
-          command[14] = run.replaceFirst("<testcase>", file);
+          log("vunit: " + Arrays.toString(vim.buildCommand()), Project.MSG_DEBUG);
 
-          // ncurses and Runtime.exec don't play well together, so execute via sh.
-          if (!Os.isFamily(Os.FAMILY_WINDOWS)){
-            command = new String[]{
-              "sh", "-c", StringUtils.join(command, ' ') + " &> /dev/null", "exit"
-            };
+          vim.execute();
+          if(vim.getResult().trim().length() > 0){
+            log(vim.getResult().trim());
           }
 
-          log("vunit: " + StringUtils.join(command, ' '), Project.MSG_DEBUG);
-          CommandExecutor executor = CommandExecutor.execute(command);
-
-          if(executor.getResult().trim().length() > 0){
-            log(executor.getResult().trim());
-          }
-
-          if(executor.getReturnCode() != 0){
+          if(vim.getReturnCode() != 0){
             throw new BuildException(
-                "Failed to run command: " + executor.getErrorMessage());
+                "Failed to run command: " + vim.getErrorMessage());
           }
 
+          String path = file.replaceFirst("(.*/).*", "$1");
+          if (path.equals(file)){
+            path = "";
+          }
+          String name = file.replaceFirst(".*/(.*)", "$1");
+          name = name.replaceFirst("([^/]*?)\\..*$", "$1");
           StringBuffer resultFileName = new StringBuffer()
+            .append(todir.getAbsolutePath())
+            .append(File.separator)
             .append("TEST-")
-            .append(FileUtils.getPath(file).replace('/', '.').replace('\\', '.'))
-            .append(FileUtils.getFileName(file))
+            .append(path.replace('/', '.'))
+            .append(name)
             .append(".xml");
-          File resultFile = new File(FileUtils.concat(
-              todir.getAbsolutePath(), resultFileName.toString()));
+          File resultFile = new File(resultFileName.toString());
 
           try{
             parser.parse(resultFile, handler);
@@ -193,14 +179,6 @@ public class VUnitTask
   private void validateAttributes()
     throws BuildException
   {
-    if(plugin == null){
-      throw new BuildException("Attribute 'plugin' required");
-    }
-
-    if(!plugin.exists()){
-      throw new BuildException("Supplied 'plugin' file does not exist.");
-    }
-
     if(todir == null){
       throw new BuildException("Attribute 'todir' required");
     }
@@ -214,6 +192,49 @@ public class VUnitTask
       throw new BuildException(
           "You must supply at least one fileset of test files to execute.");
     }
+  }
+
+  private File extractVUnitPlugin()
+    throws Exception
+  {
+    InputStream in = this.getClass().getResourceAsStream("/vunit.vim");
+    if(in == null){
+      throw new BuildException("Unable to locate vunit.vim resource.");
+    }
+    File temp = new File(
+        System.getProperty("java.io.tmpdir") + File.separator + "vunit.vim");
+    temp.deleteOnExit();
+    FileOutputStream out = new FileOutputStream(temp);
+
+    try{
+      byte[] buffer = new byte[1024 * 4];
+      int n = 0;
+      while (-1 != (n = in.read(buffer))) {
+        out.write(buffer, 0, n);
+      }
+    }finally{
+      FileUtils.close(in);
+      FileUtils.close(out);
+    }
+    return temp;
+  }
+
+  /**
+   * Adds a plugin to be loaded prior to running the tests.
+   * @param plugin The plugin.
+   */
+  public void addPlugin(Plugin plugin)
+  {
+    plugins.add(plugin);
+  }
+
+  /**
+   * Adds a path to be included in the vim runtimepath when running tests.
+   * @param set A path element.
+   */
+  public void addPathelement(Path path)
+  {
+    paths.add(path);
   }
 
   /**
@@ -235,16 +256,6 @@ public class VUnitTask
   }
 
   /**
-   * Sets the plugin for this instance.
-   *
-   * @param plugin The plugin.
-   */
-  public void setPlugin(File plugin)
-  {
-    this.plugin = plugin;
-  }
-
-  /**
    * Sets the todir for this instance.
    *
    * @param todir The todir.
@@ -252,6 +263,10 @@ public class VUnitTask
   public void setTodir(File todir)
   {
     this.todir = todir;
+    Environment.Variable var = new Environment.Variable();
+    var.setKey("g:VUnitOutputDir");
+    var.setValue(todir.getAbsolutePath().replace('\\', '/'));
+    addSysproperty(var);
   }
 
   /**

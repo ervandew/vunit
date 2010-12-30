@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="vunit" default="jar">
+  <defaultexcludes add="**/*.swp"/>
+
+  <target name="jar" description="Build the vunit ant task jar">
+    <mkdir dir="build/classes"/>
+    <javac
+        destdir="build/classes"
+        srcdir="src/java"
+        debug="on" optimize="false"
+        includeantruntime="true"/>
+    <jar jarfile="build/vunit.jar">
+      <fileset dir="build/classes" includes="**/*"/>
+      <fileset dir="src/java" includes="**/*" excludes="**/*.html,**/*.java"/>
+      <fileset dir="autoload" includes="*.vim"/>
+    </jar>
+  </target>
+
+  <target name="clean" description="Delete build artifacts">
+    <delete dir="build"/>
+  </target>
+
+  <target name="test" depends="jar" description="Run the vunit tests">
+    <taskdef resource="vunit/ant.properties">
+      <classpath> <fileset dir="build" includes="vunit.jar"/> </classpath>
+    </taskdef>
+
+    <mkdir dir="build/test"/>
+    <vunit todir="build/test">
+      <fileset dir="test" includes="**/*.vim"/>
+    </vunit>
+  </target>
+
+</project>

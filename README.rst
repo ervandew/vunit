@@ -31,7 +31,7 @@
     NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-VUnit provids a JUnit/PyUnit like unit test framework for vim scripts. Tests
+VUnit provides a JUnit/PyUnit like unit test framework for vim scripts. Tests
 are written in vimscript and can be run at the command line using either a
 python test runner or using an ant task.
 

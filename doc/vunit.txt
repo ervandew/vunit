@@ -1,0 +1,158 @@
+*vunit.txt*
+
+-----------------------------------------------------------------------------
+VUnit                                            *vunit*
+
+  Prerequisites                      |vunit-prerequisites|
+  Overview                           |vunit-overview|
+  Usage                              |vunit-usage|
+    Writing Tests                      |vunit-testcase|
+    Running Tests                      |vunit-runner|
+      Command Line (python script)       |vunit-cl|
+      Ant                                |vunit-ant|
+
+-----------------------------------------------------------------------------
+Prerequisites                                    *vunit-prerequisites*
+
+To run vunit tests you must:
+
+1. Have vim 7.x or greater
+2. Have python 1.4 or greater (to use vunit's command line runner)
+3. Have java 1.5 or greater (to use vunit's ant task)
+
+-----------------------------------------------------------------------------
+Overview                                         *vunit-overview*
+
+VUnit is a framework which aims to bring JUnit, or Python unittest, like unit
+testing support to vim.
+
+-----------------------------------------------------------------------------
+Usage                                            *vunit-usage*
+
+Usage of VUnit consists of:
+1. Writing unit tests and
+2. Running unit tests
+
+Writing Tests                                    *vunit-testcase*
+
+Writing a VUnit test is very similar to writing a JUnit or python unittest.
+The test file can have one or more test functions where the function name must
+be prefixed with 'Test' (Ex. TestMyFeature()). The body of the test function
+can be pretty much whatever you want and VUnit provides several functions to
+help you validate the results of your test logic (note that the message
+argument is optional for each of these):
+
+  vunit#AssertEquals(arg1, arg2 [, message])
+  vunit#AssertNotEquals(arg1, arg2 [, message])
+  vunit#AssertTrue(arg1 [, message])
+  vunit#AssertFalse(arg1 [, message])
+  vunit#Fail([message])
+
+In addition to these functions, VUnit also provides vunit#PeekRedir(), which
+is used to work around a limitation of vim. When running your tests VUnit will
+redirect output so that any messages can be captured and included in the
+<system-out> section of the result file. However some commands can end up
+breaking the redirection resulting in the loss of further output. To combat
+this, the vunit#PeekRedir() can be called to reset VUnit's capturing of the
+output.
+
+In addition to the test functions you can also have a 'SetUp' function and
+'TearDown' function where the 'SetUp' function is invoked before each test
+function and 'TearDown' is invoked after each.
+
+Here is an example of a simple test file that tests autoindent with tab
+expansion in a vim file: >
+
+  function SetUp()
+    set expandtab shiftwidth=2 tabstop=2
+  endfunction
+
+  function TestTabExpand()
+    set ft=vim
+    call append(0, ['if 1', 'endif'])
+    call cursor(1, 1)
+    normal oecho 'test'
+    call vunit#AssertEquals(getline(2), "  echo 'test'")
+  endfunction
+>
+
+
+Running Tests                                    *vunit-runner*
+
+There are currently two different ways to run vunit tests:
+1. Using the vunit python script (|vunit-cl|)
+2. Using the ant task (|vunit-ant|)
+
+There are a few things to note about how both of these scripts run your tests:
+1. each test file is run in a new vim instance
+2. each vim instance is started with the following arguments:
+     -u NONE -U NONE --cmd "set nocp | sy on | filetype plugin indent on"
+   This means that your vimrc/gvimrc files will not be sourced and that vim
+   will be placed in non-compatibility mode with filetype plugins, syntax
+   highlighting, and indenting enabled. Any other options your tests may be
+   dependent on will need to be set in the test case or the SetUp function of
+   your test file.
+3. before each test function a SetUp() function, if it exists, in your test file
+   will be executed
+4. after each test function a TearDown() function, if it exists, in your test
+   file will be executed. Also, all vim buffers will be deleted to help ensure
+   a clean slate for the next test case.
+
+Running using command line script                *vunit-cl*
+
+To run your VUnit tests from the command, the bin/vunit python script is
+provided. This script supports several options to define how to run your
+tests:
+
+* -d/--todir:  Defines the directory where the test result files will be
+               written to.
+* -r/--rtp:    One or more of these can be supplied to add directories to vim's
+               runtime path before running the tests. Remember that the test
+               runners do not source your .vimrc so if you project's
+               directory is normally added via a pathogen call, etc. you will
+               probably need to supply this argument instead.
+* -p/--plugin: One or more of these can be supplied with a runtimepath
+               relative vimfile to be sourced using vim's :runtime command.
+* -t/--tests:  At least of these is required, but you can supplie more than
+               one, to specify test files to be run. The value can include *
+               wildcards.
+
+Here is an example: >
+
+  $ vunit -d build/test -r $PWD -p plugin/myplugin.vim -t test/**/*.vim
+>
+
+Note: currently the vunit script runner is not supported in cygwin.
+
+Running using ant                                *vunit-ant*
+
+If you would like to run your VUnit tests via an ant build file, you'll first
+need to build the VUnit task jar file: >
+  $ ant
+>
+
+This will build the VUnit task jar file at build/vunit.jar, which you can then
+put into your ant distribution's lib directory or you can put it somewhere in
+your project and specify its location in your build file.
+
+Here is an example which defines the vunit task using the vunit.jar in a
+project local lib directory: >
+
+  <taskdef resource="vunit/ant.properties">
+    <classpath> <fileset dir="lib" includes="vunit.jar"/> </classpath>
+  </taskdef>
+
+  <vunit todir="build/test" failureproperty="vunit.failed">
+    <sysproperty key="g:TestMyVar" value="${my.var}/"/>
+    <pathelement path="${basedir}"/>
+    <plugin name="plugin/myplugin.vim"/>
+    <fileset dir="test', includes="**/*.vim"/>
+  </vunit>
+>
+
+This example uses 'sysproperty' to define a global vim variable that will be
+available for use in the test files, 'pathelement' to add the current
+project's directory to vim's runtime path, 'plugin' to define the plugin to
+load before running the tests, and 'fileset' to define the test files to run. 
+
+vim:tw=78:ft=help:norl:

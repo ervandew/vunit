@@ -291,6 +291,9 @@ function! s:TearDown()
   new
   exec 'silent! bwipeout! ' . curbuf
 
+  " reset the syntax
+  syntax off | syntax clear | syntax on
+
   call vunit#PopRedir()
   unlet g:null
 endfunction " }}}

@@ -6,7 +6,7 @@
 "     http://www.vim.org/scripts/script.php?script_id=1125
 "
 " License:
-"   Copyright (c) 2005 - 2010, Eric Van Dewoestine
+"   Copyright (c) 2005 - 2011, Eric Van Dewoestine
 "   All rights reserved.
 "
 "   Redistribution and use of this software in source and binary forms, with
@@ -282,9 +282,15 @@ function! s:TearDown()
   let g:null = ''
   call vunit#PushRedir('=> g:null')
   while curbuf <= lastbuf
-    exec 'silent! bdelete! ' . curbuf
+    exec 'silent! bwipeout! ' . curbuf
     let curbuf += 1
   endwhile
+
+  " this will really make sure we are not re-using an existing buffer
+  let curbuf = bufnr('%')
+  new
+  exec 'silent! bwipeout! ' . curbuf
+
   call vunit#PopRedir()
   unlet g:null
 endfunction " }}}

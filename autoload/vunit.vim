@@ -357,7 +357,11 @@ function! s:WriteResults(testfile, running_time)
     call insert(results, testcase, index)
 
     if len(result.fail) > 0
-      let message = substitute(result.fail[0], '"', '\&quot;', 'g')
+      let message = result.fail[0]
+      let message = substitute(message, '&', '\&amp;', 'g')
+      let message = substitute(message, '"', '\&quot;', 'g')
+      let message = substitute(message, '<', '\&lt;', 'g')
+      let message = substitute(message, '>', '\&gt;', 'g')
       call insert(results, '    <failure message="' . message . '"><![CDATA[', index)
       let lines = split(result.fail[1], '\n')
       call map(lines, '"      " . v:val')

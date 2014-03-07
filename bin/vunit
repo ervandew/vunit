@@ -67,7 +67,7 @@ def main():
       args = 'cmd /c %s' % ' '.join(args)
     else:
       args.extend(['-c', "'qa!'"])
-      args = ['sh', '-c', '%s &> /dev/null' % ' '.join(args), 'exit']
+      args = ['sh', '-c', '%s > /dev/null 2>&1' % ' '.join(args), 'exit']
 
     vim = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if vim.wait() != 0:

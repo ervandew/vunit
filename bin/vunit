@@ -12,6 +12,7 @@ VIM_ARGS = [
     'vim',
     '-u', 'NONE',
     '-U', 'NONE',
+    '--servername', 'vunit',
     '--cmd', '"set nocp | sy on | filetype plugin indent on"',
 ]
 

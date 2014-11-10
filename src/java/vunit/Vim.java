@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2010, Eric Van Dewoestine
+ * Copyright (c) 2010 - 2014, Eric Van Dewoestine
  * All rights reserved.
  *
  * Redistribution and use of this software in source and binary forms, with
@@ -200,7 +200,8 @@ public class Vim
   }
 
   String[] buildCommand(){
-    StringBuffer vim = new StringBuffer("vim -u NONE -U NONE ");
+    StringBuffer vim = new StringBuffer(
+        "vim -u NONE -U NONE --servername vunit ");
     vim.append("--cmd \"set nocp | sy on | filetype plugin indent on\"");
 
     if (properties != null && properties.size() > 0){

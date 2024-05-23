@@ -131,7 +131,7 @@ def cmp_path(dirpath):
     p2 = os.path.join(dirpath, p2)
     diff = os.path.isfile(p1) - os.path.isfile(p2)
     if not diff:
-      return cmp(p1, p2)
+      return (p1 > p2) - (p1 < p2)
     return -diff
   return _cmp_path
 

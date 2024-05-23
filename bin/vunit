@@ -3,6 +3,7 @@ import os
 import re
 import subprocess
 import sys
+from functools import cmp_to_key
 from optparse import OptionParser
 from xml.dom import minidom
 
@@ -25,11 +26,11 @@ def main():
   (options, args) = parser.parse_args()
 
   if not options.todir:
-    print 'abort: todir required'
+    print('abort: todir required')
     sys.exit(1)
 
   if not options.tests:
-    print 'abort: tests required'
+    print('abort: tests required')
     sys.exit(1)
 
   basedir = os.path.dirname(os.path.dirname(
@@ -48,11 +49,11 @@ def main():
     elif '*' in opt_test:
       walk_wild(opt_test, tests)
     else:
-      print 'No such file or directory: %s' % opt_test
+      print('No such file or directory: %s' % opt_test)
 
   failed = False
   for test in tests:
-    print 'Running: %s' % test
+    print('Running: %s' % test)
     args = VIM_ARGS[:]
     args.extend(['--cmd', '"let g:VUnitOutputDir = \'%s\'"' % options.todir])
     args.extend(['--cmd', '"source %s"' % os.path.join(basedir, 'autoload/vunit.vim')])
@@ -72,7 +73,7 @@ def main():
 
     vim = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if vim.wait() != 0:
-      print 'Error: %s' % vim.communicate()[1].strip()
+      print('Error: %s' % vim.communicate()[1].strip())
 
     result_file = re.sub(r'[/\\]', '.', test)
     result_file = re.sub(r'\.vim$', '', result_file)
@@ -85,9 +86,9 @@ def main():
     time = root.getAttribute('time')
     name = root.getAttribute('name')
 
-    print 'Tests run: %s, Failures: %s, Time elapsed: %s' % (num, failures, time)
+    print('Tests run: %s, Failures: %s, Time elapsed: %s' % (num, failures, time))
     if failures > 0:
-      print 'Test %s FAILED' % name
+      print('Test %s FAILED' % name)
       failed = True
 
   raise SystemExit(failed)
@@ -115,7 +116,7 @@ def walk_wild_part(dirpath, parts, tests):
   index = 0
   match = '^%s$' % WILD.sub(lambda m: WILD_TO_RE[m.group(0)], parts[0])
   match_end = '^%s$' % WILD.sub(lambda m: WILD_TO_RE[m.group(0)], parts[-1])
-  for entry in sorted(os.listdir(dirpath), cmp_path(dirpath)):
+  for entry in sorted(os.listdir(dirpath), key=cmp_to_key(cmp_path(dirpath))):
     if re.match(match, entry):
       entry = os.path.join(dirpath, entry)
       if os.path.isfile(entry) and re.match(match_end, entry):
@@ -136,6 +137,6 @@ def cmp_path(dirpath):
 
 if __name__ == '__main__':
   if sys.platform == 'cygwin':
-    print 'Sorry, but cygwin is not currently supported.'
+    print('Sorry, but cygwin is not currently supported.')
     sys.exit(1)
   main()

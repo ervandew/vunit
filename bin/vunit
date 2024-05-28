@@ -10,11 +10,11 @@ from xml.dom import minidom
 WILD = re.compile(r'[*?]')
 WILD_TO_RE = {'*': '.*', '?': '.'}
 VIM_ARGS = [
-    'vim',
-    '-u', 'NONE',
-    '-U', 'NONE',
-    '--servername', 'vunit',
-    '--cmd', '"set nocp | sy on | filetype plugin indent on"',
+  'vim',
+  '-u', 'NONE',
+  '-U', 'NONE',
+  '--servername', 'vunit',
+  '--cmd', '"set nocp | sy on | filetype plugin indent on"',
 ]
 
 def main():
@@ -23,6 +23,7 @@ def main():
   parser.add_option('-r', '--rtp', action='append', type='string', dest='rtp')
   parser.add_option('-p', '--plugin', action='append', type='string', dest='plugin')
   parser.add_option('-t', '--tests', action='append', type='string', dest='tests')
+  parser.add_option('-v', '--vim', action='store_true', dest='vim')
   (options, args) = parser.parse_args()
 
   if not options.todir:
@@ -36,6 +37,17 @@ def main():
   basedir = os.path.dirname(os.path.dirname(
     os.path.abspath(os.path.realpath(sys.argv[0]))))
 
+  args = VIM_ARGS + [
+    '--cmd', '"let g:VUnitOutputDir = \'%s\'"' % options.todir,
+    '--cmd', '"source %s"' % os.path.join(basedir, 'autoload/vunit.vim'),
+  ]
+  if options.rtp:
+    args.extend([
+      '--cmd', '"set rtp+=%s"' % ','.join(options.rtp).replace(' ', '\\ ')
+    ])
+  if options.plugin:
+    args.extend(['--cmd', '"runtime %s"' % ' '.join(options.plugin)])
+
   if not os.path.isdir(options.todir):
     os.makedirs(options.todir)
 
@@ -45,7 +57,8 @@ def main():
     if os.path.isfile(opt_test):
       tests.append(opt_test)
     elif os.path.isdir(opt_test):
-      os.path.walk(opt_test, add_test, tests)
+      for root, __, files in os.walk(opt_test):
+        add_test(tests, root, files)
     elif '*' in opt_test:
       walk_wild(opt_test, tests)
     else:
@@ -53,27 +66,26 @@ def main():
 
   failed = False
   for test in tests:
-    print('Running: %s' % test)
-    args = VIM_ARGS[:]
-    args.extend(['--cmd', '"let g:VUnitOutputDir = \'%s\'"' % options.todir])
-    args.extend(['--cmd', '"source %s"' % os.path.join(basedir, 'autoload/vunit.vim')])
-    if options.rtp:
-      args.extend(['--cmd', '"set rtp+=%s"' % ','.join(options.rtp).replace(' ', '\\ ')])
-    if options.plugin:
-      args.extend(['--cmd', '"runtime %s"' % ' '.join(options.plugin)])
-    args.extend(['-c', '"silent! call vunit#TestRunner(\'.\', \'%s\')"' % test])
+    console('Running: %s' % test)
+    test_args = args + [
+      '-c', '"silent! call vunit#TestRunner(\'.\', \'%s\')"' % test
+    ]
 
     # ncurses + Popen don't play well together, so run via sh or cmd.
     if os.name == 'nt':
-      args.extend(['-c', '"qa!"'])
-      args = 'cmd /c %s' % ' '.join(args)
+      test_args.extend(['-c', '"qa!"'])
+      cmd_args = 'cmd /c %s' % ' '.join(test_args)
     else:
-      args.extend(['-c', "'qa!'"])
-      args = ['sh', '-c', '%s > /dev/null 2>&1' % ' '.join(args), 'exit']
+      test_args.extend(['-c', "'qa!'"])
+      cmd_args = ['sh', '-c', '%s > /dev/null 2>&1' % ' '.join(test_args), 'exit']
 
-    vim = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    vim = subprocess.Popen(
+      cmd_args,
+      stdout=subprocess.PIPE,
+      stderr=subprocess.PIPE,
+    )
     if vim.wait() != 0:
-      print('Error: %s' % vim.communicate()[1].strip())
+      console('Error: %s' % vim.communicate()[1].strip())
 
     result_file = re.sub(r'[/\\]', '.', test)
     result_file = re.sub(r'\.vim$', '', result_file)
@@ -82,13 +94,24 @@ def main():
     root = dom.documentElement
 
     num = int(root.getAttribute('tests'))
-    failures = int(root.getAttribute('failures'))
+    num_failures = int(root.getAttribute('failures'))
     time = root.getAttribute('time')
     name = root.getAttribute('name')
 
-    print('Tests run: %s, Failures: %s, Time elapsed: %s' % (num, failures, time))
-    if failures > 0:
-      print('Test %s FAILED' % name)
+    if num_failures and options.vim:
+      failures = root.getElementsByTagName('failure')
+      for failure in failures:
+        testcase = failure.parentNode
+        console('FAIL: %s.vim:%s:%s %s' % (
+          testcase.getAttribute('classname'),
+          failure.getAttribute('line'),
+          testcase.getAttribute('name'),
+          failure.getAttribute('message'),
+        ))
+
+    console('Tests run: %s, Failures: %s, Time elapsed: %s' % (num, num_failures, time))
+    if num_failures > 0:
+      console('Test %s FAILED' % name)
       failed = True
 
   raise SystemExit(failed)
@@ -125,7 +148,7 @@ def walk_wild_part(dirpath, parts, tests):
         walk_wild_part(entry, parts[1:], tests)
 
 def cmp_path(dirpath):
-  ''' sort files before dirs '''
+  # sort files before dirs
   def _cmp_path(p1, p2):
     p1 = os.path.join(dirpath, p1)
     p2 = os.path.join(dirpath, p2)
@@ -134,6 +157,14 @@ def cmp_path(dirpath):
       return (p1 > p2) - (p1 < p2)
     return -diff
   return _cmp_path
+
+def console(msg):
+  # when run from vim (:Vunit ...), python doesn't seem to flush stdout very
+  # often, resulting in no feedback to the user that anything is happening.
+  # So manually flush after every print to ensure our messages are written to
+  # the terminal immediately.
+  print(msg)
+  sys.__stdout__.flush()
 
 if __name__ == '__main__':
   if sys.platform == 'cygwin':

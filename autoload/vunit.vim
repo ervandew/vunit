@@ -6,7 +6,7 @@
 "     http://www.vim.org/scripts/script.php?script_id=1125
 "
 " License:
-"   Copyright (c) 2005 - 2011, Eric Van Dewoestine
+"   Copyright (c) 2005 - 2024, Eric Van Dewoestine
 "   All rights reserved.
 "
 "   Redistribution and use of this software in source and binary forms, with
@@ -48,9 +48,17 @@ let s:save_cpo=&cpo
 set cpo&vim
 
 " Global Variables {{{
-  if !exists('g:VUnitOutputDir')
+  if !exists('g:VUnitTestsDir')
+    " Sets the directory where vunit tests can be found
+    let g:VUnitTestsDir = 'test'
+  endif
+  if !exists('g:VUnitResultsDir')
     " Sets the output directory where test results will be written to.
-    let g:VUnitOutputDir = '.'
+    let g:VUnitResultsDir = 'build/test'
+  endif
+  if !exists('g:VUnitPluginDir')
+    " Sets the directory where the plugin(s) to test are located
+    let g:VUnitPluginDir = 'plugin'
   endif
 " }}}
 
@@ -62,11 +70,57 @@ set cpo&vim
   let s:testcase = '  <testcase classname="<testcase>" name="<test>" time="<time>"'
 " }}}
 
-" AssertEquals(arg1, arg2, ...) {{{
-" Compares the two arguments to determine if they are equal.
-function! vunit#AssertEquals(arg1, arg2, ...)
+function! vunit#Vunit(bang, ...) " {{{
+  let result = findfile('autoload/vunit.vim', escape(&rtp, ' '))
+  if result == ''
+    call s:Echo('Unable to locate vunit in the runtimepath.', 'error')
+    return
+  endif
+
+  let path = fnamemodify(result, ':h:h')
+  let vunit = path . '/bin/vunit'
+  if !filereadable(vunit)
+    call s:Echo('Unable to locate vunit script.', 'error')
+    return
+  endif
+
+  let results_dir = g:VUnitResultsDir
+  let tests = len(a:000) ? a:000 : [g:VUnitTestsDir . '/**/*.vim']
+
+  let rtp = getcwd()
+  if exists('g:VUnitRuntimePath')
+    let rtp = g:VUnitRuntimePath
+  else
+    let rtp = getcwd()
+  endif
+
+  let cmd = vunit .
+    \ ' -v ' .
+    \ ' -d ' . results_dir .
+    \ ' -r ' . rtp .
+    \ ' -p ' . g:VUnitPluginDir . '/*.vim' .
+    \ ' -t ' . join(tests, ' -t ')
+
+  let orig_makeprg = &makeprg
+  let orig_erroformat = &errorformat
+  try
+    exec 'set makeprg=' . escape(cmd, ' ')
+    exec 'set errorformat=' .
+      \ '%-GRunning:%.%#,' .
+      \ '%-GTests\ run:%.%#,' .
+      \ '%-G%.%#FAILED,' .
+      \ '%EFAIL:\ %f:%l:%m'
+    exec 'make' . a:bang
+  finally
+    let &makeprg = orig_makeprg
+    let &errorformat = orig_erroformat
+  endtry
+endfunction " }}}
+
+function! vunit#AssertEquals(arg1, arg2, ...) " {{{
+  " Compares the two arguments to determine if they are equal.
   if a:arg1 != a:arg2
-    let message = '"' . string(a:arg1) . '" != "' . string(a:arg2) . '"'
+    let message = string(a:arg1) . ' != ' . string(a:arg2)
     if a:0 > 0
       let message = a:1 . ' (' . message . ')'
     endif
@@ -74,11 +128,10 @@ function! vunit#AssertEquals(arg1, arg2, ...)
   endif
 endfunction " }}}
 
-" AssertNotEquals(arg1, arg2, ...) {{{
-" Compares the two arguments to determine if they are equal.
-function! vunit#AssertNotEquals(arg1, arg2, ...)
+function! vunit#AssertNotEquals(arg1, arg2, ...) " {{{
+  " Compares the two arguments to determine if they are equal.
   if a:arg1 == a:arg2
-    let message = '"' . string(a:arg1) . '" == "' . string(a:arg2) . '"'
+    let message = string(a:arg1) . ' == ' . string(a:arg2)
     if a:0 > 0
       let message = a:1 . ' (' . message . ')'
     endif
@@ -86,11 +139,10 @@ function! vunit#AssertNotEquals(arg1, arg2, ...)
   endif
 endfunction " }}}
 
-" AssertTrue(arg1, ...) {{{
-" Determines if the supplied argument is true.
-function! vunit#AssertTrue(arg1, ...)
+function! vunit#AssertTrue(arg1, ...) " {{{
+  " Determines if the supplied argument is true.
   if !a:arg1
-    let message = '"' . a:arg1 . '" is not true.'
+    let message = string(a:arg1) . ' is not true.'
     if a:0 > 0
       let message = a:1 . ' (' . message . ')'
     endif
@@ -98,11 +150,10 @@ function! vunit#AssertTrue(arg1, ...)
   endif
 endfunction " }}}
 
-" AssertFalse(arg1, ...) {{{
-" Determines if the supplied argument is false.
-function! vunit#AssertFalse(arg1, ...)
+function! vunit#AssertFalse(arg1, ...) " {{{
+  " Determines if the supplied argument is false.
   if a:arg1 || type(a:arg1) != 0
-    let message = '"' . a:arg1 . '" is not false.'
+    let message = string(a:arg1) . ' is not false.'
     if a:0 > 0
       let message = a:1 . ' (' . message . ')'
     endif
@@ -110,35 +161,37 @@ function! vunit#AssertFalse(arg1, ...)
   endif
 endfunction " }}}
 
-" Fail(...) {{{
-" Fails the current test.
-function! vunit#Fail(...)
+function! vunit#Fail(...) " {{{
+  " Fails the current test.
   let message = a:0 > 0 ? a:1 : ''
   throw 'Fail: ' . message
 endfunction " }}}
 
-" TestRunner(basedir, testfile, ...) {{{
-" Runs the supplied test case.
-" basedir - The base directory where the file is located.  Used to construct
-"           the output file (testfile with basedir stripped off).
-" testfile - The basedir relative test file to run.
-if !exists('*vunit#TestRunner')
-function! vunit#TestRunner(basedir, testfile)
-  call s:Init(a:basedir, a:testfile)
+function! vunit#TestRunner(basedir, testfile) " {{{
+  " Runs the supplied test case.
+  " basedir - The base directory where the file is located.  Used to construct
+  "           the output file (testfile with basedir stripped off).
+  " testfile - The basedir relative test file to run.
 
-  let tests = s:GetTestFunctionNames()
-  let testcase = fnamemodify(a:testfile, ':r')
+  let resultsfile = s:Init(a:basedir, a:testfile)
+  if resultsfile == ''
+    return
+  endif
+
+  let testfile = fnamemodify(a:basedir . '/' . a:testfile, ':p')
+  exec 'source ' . testfile
+  let tests = s:GetTestFunctionNames(testfile)
 
   call vunit#PushRedir('=>> g:vu_sysout')
-  exec 'source ' . s:VUnitTestFile
 
   if exists('*BeforeTestCase')
     call BeforeTestCase()
   endif
 
   let now = localtime()
-  for test in tests
-    call s:RunTest(testcase, test)
+  let testcase = fnamemodify(a:testfile, ':r')
+  for [test, lnum] in tests
+    call s:RunTest(testcase, test, lnum)
   endfor
 
   if exists('*AfterTestCase')
@@ -148,7 +201,7 @@ function! vunit#TestRunner(basedir, testfile)
   call vunit#PopRedir()
 
   let duration = localtime() - now
-  call s:WriteResults(a:testfile, duration)
+  call s:WriteResults(a:testfile, resultsfile, duration)
 
   echom printf(
     \ 'Tests run: %s, Failures: %s, Time elapsed %s sec',
@@ -157,17 +210,14 @@ function! vunit#TestRunner(basedir, testfile)
   if s:tests_failed > 0
     echom "Test " . a:testfile . " FAILED"
   endif
-endfunction
-endif " }}}
+endfunction " }}}
 
-" PushRedir(redir) {{{
-function! vunit#PushRedir(redir)
+function! vunit#PushRedir(redir) " {{{
   exec 'redir ' . a:redir
   call add(s:redir_stack, a:redir)
 endfunction " }}}
 
-" PopRedir() {{{
-function! vunit#PopRedir()
+function! vunit#PopRedir() " {{{
   let index = len(s:redir_stack) - 2
   if index >= 0
     let redir = s:redir_stack[index]
@@ -179,15 +229,13 @@ function! vunit#PopRedir()
   endif
 endfunction " }}}
 
-" PeekRedir() {{{
-function! vunit#PeekRedir()
+function! vunit#PeekRedir() " {{{
   call vunit#PushRedir(s:redir_stack[len(s:redir_stack) - 1])
   call vunit#PopRedir()
   return s:redir_stack[len(s:redir_stack) - 1]
 endfunction " }}}
 
-" s:Init(basedir, testfile) {{{
-function! s:Init(basedir, testfile)
+function! s:Init(basedir, testfile) " {{{
   let s:tests_cwd = getcwd()
   let s:tests_run = 0
   let s:tests_failed = 0
@@ -196,54 +244,30 @@ function! s:Init(basedir, testfile)
   let s:redir_stack = []
   let g:vu_sysout = ''
 
-  unlet! s:VUnitOutputFile
-  unlet! s:VUnitOutputDir
-
   silent! delfunction BeforeTestCase
   silent! delfunction SetUp
   silent! delfunction TearDown
   silent! delfunction AfterTestCase
 
-  let s:VUnitTestFile = fnamemodify(a:basedir . '/' . a:testfile, ':p')
+  " construct output file to use.
+  let file = a:testfile
 
-  if !exists('s:VUnitOutputDir')
-    let g:VUnitOutputDir = expand(g:VUnitOutputDir)
-    let s:VUnitOutputDir = g:VUnitOutputDir
+  " remove file extension
+  let file = fnamemodify(file, ':r')
+  " remove spaces, leading path separator, and drive letter
+  let file = substitute(file, '\(\s\|^[a-zA-Z]:/\|^/\)', '', 'g')
+  " substitute all path separators with '.'
+  let file = substitute(file, '\(/\|\\\)', '.', 'g')
 
-    " check if directory exists, if not try to create it.
-    if !isdirectory(g:VUnitOutputDir)
-      " FIXME: fix to create parent directories as necessary
-      call mkdir(g:VUnitOutputDir)
-      if !isdirectory(g:VUnitOutputDir)
-        echoe "Directory '" . g:VUnitOutputDir .
-          \ "' does not exist and could not be created. " .
-          \ "All output will be written to the screen."
-        let s:VUnitOutputDir = ''
-        return
-      endif
-    endif
+  let resultsfile = g:VUnitResultsDir . '/TEST-' . file . '.xml'
 
-    " construct output file to use.
-    if !exists('s:VUnitOutputFile')
-      let file = a:testfile
+  " delete the existing file
+  call delete(resultsfile)
 
-      " remove file extension
-      let file = fnamemodify(file, ':r')
-      " remove spaces, leading path separator, and drive letter
-      let file = substitute(file, '\(\s\|^[a-zA-Z]:/\|^/\)', '', 'g')
-      " substitute all path separators with '.'
-      let file = substitute(file, '\(/\|\\\)', '.', 'g')
-
-      let s:VUnitOutputFile = s:VUnitOutputDir . '/TEST-' . file . '.xml'
-
-      " write output to the file
-      call delete(s:VUnitOutputFile)
-    endif
-  endif
+  return resultsfile
 endfunction " }}}
 
-" s:RunTest(testcase, test) {{{
-function! s:RunTest(testcase, test)
+function! s:RunTest(testcase, test, lnum) " {{{
   let now = localtime()
   if exists('*SetUp')
     call SetUp()
@@ -260,18 +284,22 @@ function! s:RunTest(testcase, test)
   catch
     let s:tests_run += 1
     let s:tests_failed += 1
-    call add(fail, v:exception)
-    call add(fail, v:throwpoint)
+    let fail = [v:exception, v:throwpoint]
   endtry
 
   let time = localtime() - now
-  let result = {'testcase': a:testcase, 'test': a:test, 'time': time, 'fail': fail}
+  let result = {
+      \ 'testcase': a:testcase,
+      \ 'test': a:test,
+      \ 'lnum': a:lnum,
+      \ 'time': time,
+      \ 'fail': fail
+    \ }
   call add(s:test_results, result)
   call s:TearDown()
 endfunction " }}}
 
-" s:TearDown() {{{
-function! s:TearDown()
+function! s:TearDown() " {{{
   " restore orig cwd
   exec 'cd ' . escape(s:tests_cwd, ' ')
 
@@ -298,14 +326,13 @@ function! s:TearDown()
   unlet g:null
 endfunction " }}}
 
-" s:GetTestFunctionNames() " {{{
-function! s:GetTestFunctionNames()
+function! s:GetTestFunctionNames(testfile) " {{{
   let winreset = winrestcmd()
   let results = []
-  try
-    new
-    silent exec 'view ' . s:VUnitTestFile
 
+  new
+  try
+    silent exec 'view ' . a:testfile
     call cursor(1, 1)
 
     while search(s:function_regex, 'cW')
@@ -316,7 +343,7 @@ function! s:GetTestFunctionNames()
       endif
 
       if name =~ '^Test'
-        call add(results, name)
+        call add(results, [name, line('.')])
       endif
       call cursor(line('.') + 1, 1)
     endwhile
@@ -328,8 +355,7 @@ function! s:GetTestFunctionNames()
   return results
 endfunction " }}}
 
-" s:WriteResults(testfile, running_time) {{{
-function! s:WriteResults(testfile, running_time)
+function! s:WriteResults(testfile, resultsfile, running_time) " {{{
   let root = s:testsuite
   let root = substitute(root, '<suite>', a:testfile, '')
   let root = substitute(root, '<tests>', s:tests_run, '')
@@ -346,25 +372,38 @@ function! s:WriteResults(testfile, running_time)
 
   " insert test results
   let index = -5
+  let sid = expand('<SID>')
   for result in s:test_results
     let testcase = s:testcase
     let testcase = substitute(testcase, '<testcase>', result.testcase, '')
     let testcase = substitute(testcase, '<test>', result.test, '')
     let testcase = substitute(testcase, '<time>', result.time, '')
-
     let testcase .= len(result.fail) == 0 ? '/>' : '>'
 
     call insert(results, testcase, index)
 
     if len(result.fail) > 0
-      let message = result.fail[0]
+      let test_lnum = result.lnum
+      let [message, stack] = result.fail
       let message = substitute(message, '&', '\&amp;', 'g')
       let message = substitute(message, '"', '\&quot;', 'g')
       let message = substitute(message, '<', '\&lt;', 'g')
       let message = substitute(message, '>', '\&gt;', 'g')
-      call insert(results, '    <failure message="' . message . '"><![CDATA[', index)
-      let lines = split(result.fail[1], '\n')
-      call map(lines, '"      " . v:val')
+      let stack = split(stack, '\.\.')
+      let lnum = ''
+      let lines = []
+      for line in stack
+        if line =~ '\(^command line$\|\<vunit#\|' . sid . '\)'
+          continue
+        endif
+        let line = substitute(line, '^\(<SNR>\d\+_\)', 's:', '')
+        let line = substitute(line, '\[\(\d\+\)\]$', ', line \1', '')
+        let line = '      ' . line
+        let lnum = substitute(line, '.*, line \(\d\+\)$', '\1', '')
+        let lnum += test_lnum
+        call add(lines, line)
+      endfor
+      call insert(results, '    <failure line="' . lnum . '" message="' . message . '"><![CDATA[', index)
       for line in lines
         call insert(results, line, index)
       endfor
@@ -381,7 +420,23 @@ function! s:WriteResults(testfile, running_time)
     call insert(results, line, index)
   endfor
 
-  call writefile(results, s:VUnitOutputFile)
+  call writefile(results, a:resultsfile)
+endfunction " }}}
+
+function! s:Echo(message, level) " {{{
+  let highlight = 'Statement'
+  if a:level == 'warning'
+    let highlight = 'WarningMsg'
+  elseif a:level == 'error'
+    let highlight = 'Error'
+  endif
+
+  exec "echohl " . highlight
+  redraw
+  for line in split(a:message, '\n')
+    echom line
+  endfor
+  echohl None
 endfunction " }}}
 
 let &cpo = s:save_cpo

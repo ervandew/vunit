@@ -10,10 +10,16 @@
         srcdir="src/java"
         debug="on" optimize="false"
         includeantruntime="true"/>
+    <concat destfile="build/vunit.vim">
+      <fileset dir=".">
+        <include name="plugin/*.vim"/>
+        <include name="autoload/*.vim"/>
+      </fileset>
+    </concat>
     <jar jarfile="build/vunit.jar">
       <fileset dir="build/classes" includes="**/*"/>
       <fileset dir="src/java" includes="**/*" excludes="**/*.html,**/*.java"/>
-      <fileset dir="autoload" includes="*.vim"/>
+      <fileset dir="build" includes="vunit.vim"/>
     </jar>
   </target>
 
@@ -28,7 +34,9 @@
 
     <mkdir dir="build/test"/>
     <vunit todir="build/test">
-      <fileset dir="test" includes="**/*.vim"/>
+      <plugin name="plugin/*.vim"/>
+      <pathelement path="."/>
+      <fileset dir="test/pass" includes="**/*.vim"/>
     </vunit>
   </target>
 

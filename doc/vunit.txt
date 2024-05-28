@@ -23,8 +23,8 @@ To run vunit tests you must:
 -----------------------------------------------------------------------------
 Overview                                         *vunit-overview*
 
-VUnit is a framework which aims to bring JUnit, or Python unittest, like unit
-testing support to vim.
+VUnit is a framework which aims to bring JUnit / Python unittest like testing
+support to vim.
 
 -----------------------------------------------------------------------------
 Usage                                            *vunit-usage*
@@ -74,16 +74,16 @@ expansion in a vim file: >
     normal oecho 'test'
     call vunit#AssertEquals(getline(2), "  echo 'test'")
   endfunction
->
 
 
 Running Tests                                    *vunit-runner*
 
-There are currently two different ways to run vunit tests:
-1. Using the vunit python script (|vunit-cl|)
-2. Using the ant task (|vunit-ant|)
+There are a few different ways to run vunit tests:
+1. Using the :VUnit vim command (|vunit-command|)
+2. Using the vunit python script (|vunit-cl|)
+3. Using the ant task (|vunit-ant|)
 
-There are a few things to note about how both of these scripts run your tests:
+There are a few things to note about how these run your tests:
 1. each test file is run in a new vim instance
 2. each vim instance is started with the following arguments:
      -u NONE -U NONE --cmd "set nocp | sy on | filetype plugin indent on"
@@ -92,15 +92,54 @@ There are a few things to note about how both of these scripts run your tests:
    highlighting, and indenting enabled. Any other options your tests may be
    dependent on will need to be set in the test case or the SetUp function of
    your test file.
-3. before each test function a SetUp() function, if it exists, in your test file
-   will be executed
+3. before each test function a SetUp() function, if it exists, in your test
+   file will be executed
 4. after each test function a TearDown() function, if it exists, in your test
    file will be executed. Also, all vim buffers will be deleted to help ensure
    a clean slate for the next test case.
 
+Running using the vim command                    *:VUnit* *:Vunit* *vunit-command*
+
+To run your vunit tests from vim: >
+
+  :VUnit [<test_file>.vim ...]
+>
+Run all your tests: >
+  :VUnit
+>
+Run the current test file: >
+  :VUnit %
+>
+Run all test files in the directory test: >
+  :VUnit test
+>
+Run the test.vim file in the directory test: >
+  :VUnit test/test.vim
+>
+If there are any failures they will be populated into vim's quickfix so you
+can navigate to each line in your tests that failed.
+
+While :VUnit attempt to provide sensible defaults, you may need to tell it
+where your test files, the plugin your testing, etc are located via the
+following settings:
+
+*g:VUnitTestsDir* (defualt: 'test')
+  The directory where your test files are located.
+
+*g:VUnitResultsDir* (default: 'build/test')
+  The output directory where test results will be written to.
+
+*g:VUnitPluginDir* (default: 'plugin')
+  The directory where the plugin(s) to test are located.
+
+Note: :Vunit is an alias to :VUnit, so you can use either.
+
+Note: Like with :make, you can use :VUnit! to run vunit without jumping to the
+first error.
+
 Running using command line script                *vunit-cl*
 
-To run your VUnit tests from the command, the bin/vunit python script is
+To run your vunit tests from the command, the bin/vunit python script is
 provided. This script supports several options to define how to run your
 tests:
 
@@ -126,12 +165,12 @@ Note: currently the vunit script runner is not supported in cygwin.
 
 Running using ant                                *vunit-ant*
 
-If you would like to run your VUnit tests via an ant build file, you'll first
-need to build the VUnit task jar file: >
+If you would like to run your vunit tests via an ant build file, you'll first
+need to build the vunit task jar file: >
   $ ant
 >
 
-This will build the VUnit task jar file at build/vunit.jar, which you can then
+This will build the vunit task jar file at build/vunit.jar, which you can then
 put into your ant distribution's lib directory or you can put it somewhere in
 your project and specify its location in your build file.
 

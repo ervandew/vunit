@@ -1,4 +1,4 @@
-..  Copyright (c) 2005 - 2010, Eric Van Dewoestine
+..  Copyright (c) 2005 - 2024, Eric Van Dewoestine
     All rights reserved.
 
     Redistribution and use of this software in source and binary forms, with
@@ -31,9 +31,7 @@
     NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-VUnit provides a JUnit/PyUnit like unit test framework for vim scripts. Tests
-are written in vimscript and can be run at the command line using either a
-python test runner or using an ant task.
+VUnit provides a JUnit / Python unittest like testing framework for vim scripts.
 
 Here is an example test case that tests autoindent with tab expansion in a vim
 file:
@@ -52,4 +50,12 @@ file:
       call vunit#AssertEquals(getline(2), "  echo 'test'")
     endfunction
 
-See the vim help file for full documentation.
+Test can be run via:
+
+#. Using the :VUnit vim command
+#. Using the vunit python script
+#. Using the ant task
+
+For full details please see the provided `vim help doc`_.
+
+.. _vim help doc: https://github.com/ervandew/vunit/blob/main/doc/vunit.txt

@@ -106,11 +106,12 @@ function! vunit#Vunit(bang, ...) " {{{
   try
     exec 'set makeprg=' . escape(cmd, ' ')
     exec 'set errorformat=' .
+      \ '%EFAIL:\ %f:%l,%Z\ \ %m,' .
       \ '%-GRunning:%.%#,' .
       \ '%-GTests\ run:%.%#,' .
-      \ '%-G%.%#FAILED,' .
-      \ '%EFAIL:\ %f:%l:%m'
+      \ '%-G%.%#FAILED'
     exec 'make' . a:bang
+    call setqflist([], 'r', {'title': 'VUnit'})
   finally
     let &makeprg = orig_makeprg
     let &errorformat = orig_erroformat

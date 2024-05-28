@@ -23,7 +23,7 @@ def main():
   parser.add_option('-r', '--rtp', action='append', type='string', dest='rtp')
   parser.add_option('-p', '--plugin', action='append', type='string', dest='plugin')
   parser.add_option('-t', '--tests', action='append', type='string', dest='tests')
-  parser.add_option('-v', '--vim', action='store_true', dest='vim')
+  parser.add_option('-v', '--verbose', action='store_true', dest='verbose')
   (options, args) = parser.parse_args()
 
   if not options.todir:
@@ -98,16 +98,36 @@ def main():
     time = root.getAttribute('time')
     name = root.getAttribute('name')
 
-    if num_failures and options.vim:
+    if num_failures and options.verbose:
       failures = root.getElementsByTagName('failure')
       for failure in failures:
+        found = False
         testcase = failure.parentNode
-        console('FAIL: %s.vim:%s:%s %s' % (
-          testcase.getAttribute('classname'),
-          failure.getAttribute('line'),
-          testcase.getAttribute('name'),
-          failure.getAttribute('message'),
-        ))
+        location = failure.firstChild.wholeText.strip().split('\n')[-1].strip()
+        if location.startswith('Test'):
+          found = True
+          console('FAIL: %s.vim:%s' % (
+            testcase.getAttribute('classname'),
+            failure.getAttribute('line'),
+          ))
+        elif '#' in location:
+          func, line = location.split(', line ')
+          location = func.rsplit('#', 1)[0]
+          location = 'autoload/%s.vim' % location.replace('#', '.')
+          if os.path.isfile(location):
+            found = True
+            line = absolute_line(
+              location,
+              r'^\s*fun?c?t?i?o?n?!?\s+%s\b.*' % func,
+              int(line),
+            )
+            console('FAIL: %s:%s' % (location, line))
+
+        if found:
+          console('  %s:%s' % (
+            testcase.getAttribute('name'),
+            failure.getAttribute('message'),
+          ))
 
     console('Tests run: %s, Failures: %s, Time elapsed: %s' % (num, num_failures, time))
     if num_failures > 0:
@@ -119,7 +139,7 @@ def main():
 def add_test(tests, dirname, names):
   for name in names:
     if name.endswith('.vim'):
-        tests.append(os.path.join(dirname, name))
+      tests.append(os.path.join(dirname, name))
 
 def walk_wild(path, tests):
   parts = []
@@ -157,6 +177,14 @@ def cmp_path(dirpath):
       return (p1 > p2) - (p1 < p2)
     return -diff
   return _cmp_path
+
+def absolute_line(file, pattern, relative_line):
+  with open(file) as f:
+    for lnum, line in enumerate(f.readlines(), 1):
+      match = re.match(pattern, line)
+      if match:
+        return lnum + relative_line
+  return 1
 
 def console(msg):
   # when run from vim (:Vunit ...), python doesn't seem to flush stdout very

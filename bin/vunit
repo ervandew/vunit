@@ -23,7 +23,6 @@ def main():
   parser.add_option('-r', '--rtp', action='append', type='string', dest='rtp')
   parser.add_option('-p', '--plugin', action='append', type='string', dest='plugin')
   parser.add_option('-t', '--tests', action='append', type='string', dest='tests')
-  parser.add_option('-v', '--verbose', action='store_true', dest='verbose')
   (options, args) = parser.parse_args()
 
   if not options.todir:
@@ -98,38 +97,25 @@ def main():
     time = root.getAttribute('time')
     name = root.getAttribute('name')
 
-    if num_failures and options.verbose:
+    if num_failures:
       failures = root.getElementsByTagName('failure')
       for failure in failures:
         found = False
         testcase = failure.parentNode
-        location = failure.firstChild.wholeText.strip().split('\n')[-1].strip()
-        if location.startswith('Test'):
-          found = True
-          console('FAIL: %s.vim:%s' % (
-            testcase.getAttribute('classname'),
-            failure.getAttribute('line'),
-          ))
-        elif '#' in location:
-          func, line = location.split(', line ')
-          location = func.rsplit('#', 1)[0]
-          location = 'autoload/%s.vim' % location.replace('#', '.')
-          if os.path.isfile(location):
-            found = True
-            line = absolute_line(
-              location,
-              r'^\s*fun?c?t?i?o?n?!?\s+%s\b.*' % func,
-              int(line),
-            )
-            console('FAIL: %s:%s' % (location, line))
+        console('FAIL: %s:%s' % (
+          failure.getAttribute('file'),
+          failure.getAttribute('line'),
+        ))
+        console('  %s %s' % (
+          testcase.getAttribute('name'),
+          failure.getAttribute('message'),
+        ))
 
-        if found:
-          console('  %s:%s' % (
-            testcase.getAttribute('name'),
-            failure.getAttribute('message'),
-          ))
-
-    console('Tests run: %s, Failures: %s, Time elapsed: %s' % (num, num_failures, time))
+    console('Tests run: %s, Failures: %s, Time elapsed: %s' % (
+      num,
+      num_failures,
+      time,
+    ))
     if num_failures > 0:
       console('Test %s FAILED' % name)
       failed = True

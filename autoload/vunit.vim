@@ -95,7 +95,6 @@ function! vunit#Vunit(bang, ...) " {{{
   endif
 
   let cmd = vunit .
-    \ ' -v ' .
     \ ' -d ' . results_dir .
     \ ' -r ' . rtp .
     \ ' -p ' . g:VUnitPluginDir . '/*.vim' .
@@ -111,6 +110,13 @@ function! vunit#Vunit(bang, ...) " {{{
       \ '%-GTests\ run:%.%#,' .
       \ '%-G%.%#FAILED'
     exec 'make' . a:bang
+    " probably a way to eliminate these leading newline chars using the
+    " errorformat, but so far no luck
+    let results = getqflist()
+    for result in results
+      let result['text'] = substitute(result['text'], '^\n', '', '')
+    endfor
+    call setqflist(results, 'r')
     call setqflist([], 'r', {'title': 'VUnit'})
   finally
     let &makeprg = orig_makeprg
@@ -191,8 +197,8 @@ function! vunit#TestRunner(basedir, testfile) " {{{
 
   let now = localtime()
   let testcase = fnamemodify(a:testfile, ':r')
-  for [test, lnum] in tests
-    call s:RunTest(testcase, test, lnum)
+  for [test, line] in tests
+    call s:RunTest(testcase, test, line)
   endfor
 
   if exists('*AfterTestCase')
@@ -268,36 +274,88 @@ function! s:Init(basedir, testfile) " {{{
   return resultsfile
 endfunction " }}}
 
-function! s:RunTest(testcase, test, lnum) " {{{
+function! s:RunTest(testcase, test, line) " {{{
   let now = localtime()
   if exists('*SetUp')
     call SetUp()
   endif
 
-  let fail = []
+  let file = ''
+  let line = 1
+  let failure = ''
+  let stack = []
+  let sid = expand('<SID>')
+  let scripts = []
   try
     call {a:test}()
     let s:tests_run += 1
-
     if exists('*TearDown')
       call TearDown()
     endif
   catch
+    if len(scripts) == 0
+      let scripts = getscriptinfo()
+    endif
     let s:tests_run += 1
     let s:tests_failed += 1
-    let fail = [v:exception, v:throwpoint]
+    let failure = v:exception
+    for location in split(v:throwpoint, '\.\.')
+      if location =~ '\(^command line$\|\<vunit#[A-Z]\|' . sid . '\)'
+        continue
+      endif
+      let [location, file, line] = s:FailureLocation(
+        \ a:testcase,
+        \ location,
+        \ scripts
+      \ )
+      call add(stack, location)
+    endfor
   endtry
 
   let time = localtime() - now
   let result = {
       \ 'testcase': a:testcase,
       \ 'test': a:test,
-      \ 'lnum': a:lnum,
+      \ 'file': file,
+      \ 'line': line,
       \ 'time': time,
-      \ 'fail': fail
+      \ 'failure': failure,
+      \ 'stack': stack,
     \ }
   call add(s:test_results, result)
   call s:TearDown()
+endfunction " }}}
+
+function! s:FailureLocation(testcase, location, scripts) " {{{
+  let location = substitute(a:location, '\[\(\d\+\)\]$', ', line \1', '')
+  let line = substitute(location, '.*, line \(\d\+\)$', '\1', '')
+
+  let file = ''
+  let func = substitute(location, ', line .*', '', '')
+  for script in a:scripts
+    let script = getscriptinfo({'sid': script['sid']})[0]
+    if index(script['functions'], func) != -1
+      let file = script['name']
+      break
+    endif
+  endfor
+
+  let cwd = getcwd() . '/'
+  if file =~ '^' . cwd
+    let file = substitute(file, cwd, '', '')
+  endif
+
+  silent exec 'split ' . file
+  try
+    call cursor(1, 1)
+    let func = substitute(func, '^\(<SNR>\d\+_\)', 's:', '')
+    let line += search('fun\?c\?t\?i\?o\?n\?!\?\s\+' . func, 'c')
+  finally
+    bdelete
+  endtry
+
+  let location = substitute(location, '^\(<SNR>\d\+_\)', 's:', '')
+  return [location, file, line]
 endfunction " }}}
 
 function! s:TearDown() " {{{
@@ -373,42 +431,34 @@ function! s:WriteResults(testfile, resultsfile, running_time) " {{{
 
   " insert test results
   let index = -5
-  let sid = expand('<SID>')
   for result in s:test_results
     let testcase = s:testcase
     let testcase = substitute(testcase, '<testcase>', result.testcase, '')
     let testcase = substitute(testcase, '<test>', result.test, '')
     let testcase = substitute(testcase, '<time>', result.time, '')
-    let testcase .= len(result.fail) == 0 ? '/>' : '>'
+    let testcase .= result.failure != '' ? '>' : '/>'
 
     call insert(results, testcase, index)
 
-    if len(result.fail) > 0
-      let test_lnum = result.lnum
-      let [message, stack] = result.fail
+    echom 'result:' result
+    if result.failure != ''
+      echom 'result.failure:' result.failure
+      let message = result.failure
       let message = substitute(message, '&', '\&amp;', 'g')
       let message = substitute(message, '"', '\&quot;', 'g')
       let message = substitute(message, '<', '\&lt;', 'g')
       let message = substitute(message, '>', '\&gt;', 'g')
-      let stack = split(stack, '\.\.')
-      let lnum = ''
-      let lines = []
-      for line in stack
-        if line =~ '\(^command line$\|\<vunit#\|' . sid . '\)'
-          continue
-        endif
-        let line = substitute(line, '^\(<SNR>\d\+_\)', 's:', '')
-        let line = substitute(line, '\[\(\d\+\)\]$', ', line \1', '')
-        let line = '      ' . line
-        let lnum = substitute(line, '.*, line \(\d\+\)$', '\1', '')
-        let lnum += test_lnum
-        call add(lines, line)
+      let failure_tag = '<failure' .
+        \ ' file="' . result.file . '"' .
+        \ ' line="' . result.line . '"' .
+        \ ' message="' . message . '">'
+      call insert(results, '    ' . failure_tag . '<![CDATA[', index)
+      call insert(results, '      <![CDATA[', index)
+      for location in result.stack
+        call insert(results, location, index)
       endfor
-      call insert(results, '    <failure line="' . lnum . '" message="' . message . '"><![CDATA[', index)
-      for line in lines
-        call insert(results, line, index)
-      endfor
-      call insert(results, '    ]]></failure>', index)
+      call insert(results, '      ]]>', index)
+      call insert(results, '    </failure>', index)
       call insert(results, '  </testcase>', index)
     endif
   endfor

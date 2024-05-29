@@ -54,56 +54,66 @@ function TestFail()
   endtry
 endfunction
 
-function TestVunit()
+function TestVUnit()
+  let g:VUnitRuntimePath = 'test'
   let bufnr = bufnr()
 
-  try
-    Vunit test/fail
+  VUnit test/fail
 
-    let results = getqflist()
-    call vunit#AssertEquals(len(results), 2)
-    call vunit#AssertTrue(results[0]['bufnr'] > 1)
-    call vunit#AssertEquals(results[0]['lnum'], 3)
-    call vunit#AssertEquals(
-      \ results[0]['text'],
-      \ 'TestFailure AssertEquals: ''yes'' != ''no'''
-    \ )
-    exec results[0]['bufnr'] . 'buffer'
-    call vunit#AssertEquals(expand('%'), 'test/fail/test.vim')
+  let results = getqflist()
+  call vunit#AssertEquals(len(results), 4)
 
-    call vunit#AssertTrue(results[1]['bufnr'] > 1)
-    call vunit#AssertEquals(results[1]['lnum'], 2)
-    call vunit#AssertEquals(
-      \ results[1]['text'],
-      \ 'TestNestedFailure AssertEquals: ''yes'' != ''no'''
-    \ )
-    exec results[1]['bufnr'] . 'buffer'
-    call vunit#AssertEquals(expand('%'), 'test/fail/nested/test.vim')
+  call vunit#AssertTrue(results[0]['bufnr'] > 1)
+  call vunit#AssertEquals(results[0]['lnum'], 3)
+  call vunit#AssertEquals(
+    \ results[0]['text'],
+    \ 'TestFailure AssertEquals: ''yes'' != ''no'''
+  \ )
+  call vunit#AssertEquals(expand('%'), 'test/fail/test.vim')
+  call vunit#AssertEquals(line('.'), 3)
 
-    Vunit %
-    let results = getqflist()
-    call vunit#AssertEquals(len(results), 1)
-    call vunit#AssertEquals(results[0]['bufnr'], bufnr())
-    call vunit#AssertEquals(results[0]['lnum'], 2)
-    call vunit#AssertEquals(
-      \ results[0]['text'],
-      \ 'TestNestedFailure AssertEquals: ''yes'' != ''no'''
-    \ )
-    call vunit#AssertEquals(expand('%'), 'test/fail/nested/test.vim')
-    call vunit#AssertEquals(line('.'), 2)
+  call vunit#AssertTrue(results[1]['bufnr'] > 1)
+  call vunit#AssertEquals(results[1]['lnum'], 2)
+  call vunit#AssertEquals(
+    \ results[1]['text'],
+    \ 'TestErrorAutoload Vim:E492: Not an editor command:   error autoload'
+  \ )
+  exec results[1]['bufnr'] . 'buffer'
+  call vunit#AssertEquals(expand('%'), 'test/autoload/vunit/test.vim')
 
-    Vunit test/fail/test.vim
-    let results = getqflist()
-    call vunit#AssertEquals(len(results), 1)
-    call vunit#AssertTrue(results[0]['bufnr'], bufnr())
-    call vunit#AssertEquals(results[0]['lnum'], 3)
-    call vunit#AssertEquals(
-      \ results[0]['text'],
-      \ 'TestFailure AssertEquals: ''yes'' != ''no'''
-    \ )
-    call vunit#AssertEquals(expand('%'), 'test/fail/test.vim')
-    call vunit#AssertEquals(line('.'), 3)
-  finally
-    exec bufnr . 'buffer'
-  endtry
+  call vunit#AssertTrue(results[2]['bufnr'] > 1)
+  call vunit#AssertEquals(results[2]['lnum'], 10)
+  call vunit#AssertEquals(
+    \ results[2]['text'],
+    \ 'TestErrorScript Vim:E492: Not an editor command:   error script'
+  \ )
+  exec results[2]['bufnr'] . 'buffer'
+  call vunit#AssertEquals(expand('%'), 'test/autoload/vunit/test.vim')
+
+  call vunit#AssertTrue(results[3]['bufnr'] > 1)
+  call vunit#AssertEquals(results[3]['lnum'], 2)
+  call vunit#AssertEquals(
+    \ results[3]['text'],
+    \ 'TestNestedFailure AssertEquals: ''yes'' != ''no'''
+  \ )
+  exec results[3]['bufnr'] . 'buffer'
+  call vunit#AssertEquals(expand('%'), 'test/fail/nested/test.vim')
+endfunction
+
+function TestVUnitFile()
+  let g:VUnitRuntimePath = 'test'
+
+  view test/fail/nested/test.vim
+
+  VUnit %
+  let results = getqflist()
+  call vunit#AssertEquals(len(results), 1)
+  call vunit#AssertEquals(results[0]['bufnr'], bufnr())
+  call vunit#AssertEquals(results[0]['lnum'], 2)
+  call vunit#AssertEquals(
+    \ results[0]['text'],
+    \ 'TestNestedFailure AssertEquals: ''yes'' != ''no'''
+  \ )
+  call vunit#AssertEquals(expand('%'), 'test/fail/nested/test.vim')
+  call vunit#AssertEquals(line('.'), 2)
 endfunction
